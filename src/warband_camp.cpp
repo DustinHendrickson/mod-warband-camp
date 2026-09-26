@@ -2031,7 +2031,7 @@ public:
                 g_liveCreatures.erase(cr.id);
         }
 
-        SQLTransaction trans = CharacterDatabase.BeginTransaction();
+        auto trans = CharacterDatabase.BeginTransaction();
         trans->Append("DELETE FROM mod_warband_camp_object WHERE account_id = {}", accountId);
         trans->Append("DELETE FROM mod_warband_camp_creature WHERE account_id = {}", accountId);
         trans->Append("DELETE FROM mod_warband_camp WHERE account_id = {}", accountId);
@@ -3617,7 +3617,7 @@ public:
             if (expired)
             {
                 uint32 pruned = 0;
-                SQLTransaction trans = CharacterDatabase.BeginTransaction();
+                auto trans = CharacterDatabase.BeginTransaction();
                 do
                 {
                     uint32 const expAcc = expired->Fetch()[0].Get<uint32>();
