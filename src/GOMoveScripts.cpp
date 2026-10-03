@@ -69,6 +69,28 @@ static GOMoveMode GetGOMoveMode(ChatHandler* handler, Player* player, bool sendE
     return GOMoveMode::CampBuilder;
 }
 
+// Grants the placement spell only to players allowed to build, and only as a
+// temporary (never saved) spell, so it never sticks in anyone's spellbook.
+static void SetPlacementSpell(Player* player, bool grant)
+{
+    if (!player)
+        return;
+
+    if (!grant)
+    {
+        if (player->HasSpell(GOMOVE_SPELL_PLACE))
+            player->removeSpell(GOMOVE_SPELL_PLACE, SPEC_MASK_ALL, false);
+        return;
+    }
+
+    bool const allowed = player->GetSession()->GetSecurity() >= SEC_GAMEMASTER ||
+        (WarbandCamp::IsCampEnabled() && WarbandCamp::IsGOMoveBuildingEnabled() &&
+         WarbandCamp::HasCamp(player->GetSession()->GetAccountId()));
+
+    if (allowed && !player->HasSpell(GOMOVE_SPELL_PLACE))
+        player->learnSpell(GOMOVE_SPELL_PLACE, true);
+}
+
 // ---------------------------------------------------------------------------
 // Command script
 // ---------------------------------------------------------------------------
@@ -112,6 +134,9 @@ public:
         SCALE         = 26,
         SELECTALLNEAR = 27,
         SPAWNSPELL    = 28,
+
+        // Placement spell lifecycle, sent by the addon while a placement UI is open (ARG 1 = grant, 0 = remove)
+        PLACESPELL    = 29,
     };
 
     ChatCommandTable GetCommands() const override
@@ -154,15 +179,18 @@ public:
             return false;
 
         Player* player = session->GetPlayer();
+
+        if (ID == PLACESPELL)
+        {
+            SetPlacementSpell(player, ARG != 0);
+            return true;
+        }
+
         GOMoveMode const mode = GetGOMoveMode(handler, player);
         if (mode == GOMoveMode::None)
             return true;
 
         bool const isGM = (mode == GOMoveMode::Admin);
-
-        // Ensure placement spell is learned
-        if (!player->HasSpell(GOMOVE_SPELL_PLACE))
-            player->learnSpell(GOMOVE_SPELL_PLACE, false);
 
         // Check if target object is a camp object
         WarbandCamp::CampObjectRecord campRecord;
@@ -460,8 +488,7 @@ public:
                                 return true;
                             }
                         }
-                        if (!player->HasSpell(GOMOVE_SPELL_PLACE))
-                            player->learnSpell(GOMOVE_SPELL_PLACE, false);
+                        SetPlacementSpell(player, true);
                         GOMove::Store.SpawnQueAdd(player->GetGUID(), ARG);
                     } break;
                     case SELECTALLNEAR:
@@ -579,7 +606,7 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// Player script — clears spawn queue on logout, learns placement spell on login
+// Player script — clears spawn queue and placement spell on login/logout
 // ---------------------------------------------------------------------------
 
 class GOMove_player_track : public PlayerScript
@@ -589,22 +616,16 @@ public:
 
     void OnPlayerLogin(Player* player) override
     {
-        bool const isGM = (player->GetSession()->GetSecurity() >= SEC_GAMEMASTER);
-        bool const hasCamp = WarbandCamp::HasCamp(player->GetSession()->GetAccountId());
-
-        if (isGM || (hasCamp && WarbandCamp::IsGOMoveBuildingEnabled()))
-        {
-            if (!player->HasSpell(GOMOVE_SPELL_PLACE))
-            {
-                player->learnSpell(GOMOVE_SPELL_PLACE, false);
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff00ff00[Warband Camp]|r Ground placement spell (ID: {}) learned.", GOMOVE_SPELL_PLACE);
-            }
-        }
+        // Strips the placement spell from characters that were permanently granted it
+        if (player->HasSpell(GOMOVE_SPELL_PLACE))
+            player->removeSpell(GOMOVE_SPELL_PLACE, SPEC_MASK_ALL, false);
     }
 
     void OnPlayerLogout(Player* player) override
     {
         GOMove::Store.SpawnQueRem(player->GetGUID());
+        if (player->HasSpell(GOMOVE_SPELL_PLACE))
+            player->removeSpell(GOMOVE_SPELL_PLACE, SPEC_MASK_ALL, false);
     }
 };
 

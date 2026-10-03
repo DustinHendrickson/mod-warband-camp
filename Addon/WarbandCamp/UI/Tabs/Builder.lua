@@ -511,6 +511,7 @@ local function gomoveBuilder(parent)
 
     table.insert(GOMove.Frames, { Update = refreshAll })
     parent:HookScript("OnShow", refreshAll)
+    GOMove:RegisterPlacementFrame(parent)
     refreshAll()
 end
 
